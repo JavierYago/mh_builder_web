@@ -92,6 +92,10 @@ class GameData:
             d = dict(r)
             d["skills"] = dsk.get(d["id"], {})
             self.decos.append(d)
+        self.skill_deco_size = {}
+        for d in self.decos:
+            for n in d["skills"]:
+                self.skill_deco_size[n] = min(self.skill_deco_size.get(n, 9), d["slot"])
         self.charms = []
         for r in q("SELECT * FROM charms WHERE game_id=?", game_id):
             d = dict(r)
@@ -109,6 +113,8 @@ def _allowed(item, tier, expansions, excludes):
         return False
     if item.get("rarity") is not None and item["rarity"] > tier["max_rarity"]:
         return False
+    if item.get("unlock_rank") and item["unlock_rank"] > tier.get("min_rank", 9999):
+        return False  # p. ej. equipo de Dragones Ancianos Elevados antes de su MR
     name = item.get("tags") or item.get("name") or ""
     return not any(x in name for x in excludes)
 
@@ -159,6 +165,54 @@ def weapon_power(w: dict, target: dict | None = None) -> tuple[float, float, str
             elem = elem * 0.75 + (w["element2_value"] or 0) * s_elem * hz2 * 0.5
     total = raw + elem
     return total, (elem / total if total else 0.0), color
+
+
+# --------------------------------------------------------------------------- talismanes de Rise
+# En Rise/Sunbreak los talismanes (las "ciguas" de World) son aleatorios: salen del Crisol de fusión.
+# No hay lista fija, así que se genera un talismán OBJETIVO realista para cada etapa: 1-2 habilidades
+# útiles con un nivel máximo que depende de la etapa y del tamaño de adorno de la habilidad (las de
+# adorno grande salen a niveles bajos), y unos huecos típicos de esa etapa.
+TALISMAN_STAGES = [
+    # (rareza máx. del escalón, niv. máx. hab.1 por tamaño de adorno, niv. máx. hab.2, huecos, rareza, nombre)
+    (3, None, None, [], 0, None),
+    (6, {1: 2, 2: 2, 3: 1}, {1: 1, 2: 1}, [1], 5, "Crisol de fusión (Rango Alto)"),
+    (7, {1: 3, 2: 2, 3: 2}, {1: 1, 2: 1, 3: 1}, [2, 1], 7, "Fusión «Misterio» (final de Rango Alto)"),
+    (9, {1: 3, 2: 2, 3: 2, 4: 1}, {1: 2, 2: 1, 3: 1}, [2, 1], 9, "Fusión de Rango Maestro"),
+    (10, {1: 3, 2: 2, 3: 2, 4: 1}, {1: 2, 2: 2, 3: 1, 4: 1}, [2, 1], 10, "Fusión «Arcoíris lunar» (endgame)"),
+]
+
+
+def rise_talismans(data, weights: dict, tier: dict) -> list[dict]:
+    stage = next((st for st in TALISMAN_STAGES if tier["max_rarity"] <= st[0]), TALISMAN_STAGES[-1])
+    _, cap1, cap2, slots, rarity, method = stage
+    if not cap1:
+        return []
+
+    def cap(name, caps):
+        size = data.skill_deco_size.get(name)
+        sk = data.skill_by_name.get(name)
+        if not size or not sk:
+            return 0
+        return min(caps.get(size, 0), sk["max_level"] or 1)
+
+    useful = [n for n, wt in weights.items() if wt > 0]
+    first = sorted(((n, cap(n, cap1)) for n in useful), key=lambda x: -weights[x[0]] * x[1])
+    first = [(n, c) for n, c in first if c > 0][:12]
+    second = sorted(((n, cap(n, cap2)) for n in useful), key=lambda x: -weights[x[0]] * x[1])
+    second = [(n, c) for n, c in second if c > 0][:12] + [(None, 0)]
+    out = []
+    for n1, l1 in first:
+        for n2, l2 in second:
+            if n2 == n1:
+                continue
+            skills = {n1: l1}
+            if n2:
+                skills[n2] = l2
+            label = " · ".join(f"{data.skill_es(n)} {lv}" for n, lv in skills.items())
+            out.append(dict(id=None, key=f"T:{n1}:{l1}:{n2}:{l2}", name=f"Talisman ({label})",
+                            name_es=f"Talismán: {label}", rarity=rarity, skills=skills, slots=list(slots),
+                            synthetic=True, method=method))
+    return out
 
 
 class Scorer:
@@ -249,7 +303,8 @@ def optimize(data: GameData, tier: dict, expansions: set[str], weapon_type: str,
         weights = meta.profile(weapon_type, w["element"], share)
         if adjust:
             weights = adjust(weights, w)
-        result = _optimize_armor(data, w, weights, armor, decos, charms)
+        charm_pool = rise_talismans(data, weights, tier) if data.game == "rise" else charms
+        result = _optimize_armor(data, w, weights, armor, decos, charm_pool)
         score = power * (1 + result["value"] / 100)
         if best is None or score > best["score"]:
             best = dict(score=score, power=power, share=share, color=color, weapon=w, weights=weights, **result)
@@ -321,14 +376,17 @@ def _optimize_armor(data, weapon, weights, armor, decos, charms):
 
     # Amuleto
     if charms:
+        def charm_slots(c):
+            return sum(slotv["armor"][x] * 0.7 for x in c.get("slots") or []) if c else 0
+
         useful_charms = [c for c in charms if any(weights.get(n, 0) > 0 for n in c["skills"])]
-        useful_charms.sort(key=lambda c: -sum(weights.get(n, 0) * l for n, l in c["skills"].items()))
-        useful_charms = useful_charms[:20] + [None]
+        useful_charms.sort(key=lambda c: -(sum(weights.get(n, 0) * l for n, l in c["skills"].items()) + charm_slots(c)))
+        useful_charms = useful_charms[:24] + [None]
         nxt = []
         for pieces, sk, bc, sv in beam[:40]:
             for c in useful_charms:
                 s2 = sk + Counter(c["skills"]) if c else sk
-                nxt.append((pieces + (c,), s2, bc, sv))
+                nxt.append((pieces + (c,), s2, bc, sv + charm_slots(c)))
         nxt.sort(key=lambda st: -(scorer.value(st[1], st[2]) + st[3]))
         beam = nxt[:FINAL]
     else:
@@ -337,7 +395,7 @@ def _optimize_armor(data, weapon, weights, armor, decos, charms):
     best = None
     for pieces, sk, bc, _sv in beam:
         armor_pieces, charm = pieces[:5], pieces[5]
-        skills, placed = _fill_decos(data, scorer, weapon, armor_pieces, Counter(sk), bc, useful_decos)
+        skills, placed = _fill_decos(data, scorer, weapon, armor_pieces, Counter(sk), bc, useful_decos, charm)
         value = scorer.value(skills, bc) + sum((p["defense_max"] or 0) * 0.002 for p in armor_pieces if p)
         set_ids = [p["set_id"] for p in armor_pieces if p]
         if len(set_ids) == 5 and len(set(set_ids)) == 1:
@@ -349,8 +407,10 @@ def _optimize_armor(data, weapon, weights, armor, decos, charms):
     return best
 
 
-def _fill_decos(data, scorer, weapon, pieces, skills, bonus_counts, decos):
+def _fill_decos(data, scorer, weapon, pieces, skills, bonus_counts, decos, charm=None):
     slots = [("weapon", s) for s in weapon["slots"]]
+    if charm and charm.get("slots"):
+        slots += [("charm", s) for s in charm["slots"]]
     for p in pieces:
         if p:
             slots += [(p["kind"], s) for s in p["slots"]]
@@ -397,7 +457,7 @@ def _weapon_card(data, w, color=None):
                 defense_bonus=w["defense_bonus"], slots=w["slots"], sharpness=w["sharpness"],
                 sharpness_max=w["sharpness_max"], sharp_color=color, image=_img(w),
                 skills=[dict(name=n, name_es=data.skill_es(n), level=l) for n, l in w["skills"].items()],
-                expansion=w["expansion_id"])
+                expansion=w["expansion_id"], unlock_note=w.get("unlock_note"))
 
 
 def serialize(data: GameData, result: dict) -> dict:
@@ -412,6 +472,7 @@ def serialize(data: GameData, result: dict) -> dict:
             continue
         pieces.append(dict(kind=kind, id=p["id"], name=p["name"], name_es=p["name_es"], rarity=p["rarity"],
                            rank=p["rank"], slots=p["slots"], defense=p["defense_max"], image=_img(p),
+                           unlock_note=p.get("unlock_note"),
                            image_f=p["image_url_f"], set_name=p["set_name"], set_name_es=p["set_name_es"],
                            expansion=p["expansion_id"],
                            skills=[dict(name=n, name_es=data.skill_es(n), level=l, useful=weights.get(n, 0) > 0)
@@ -450,11 +511,12 @@ def serialize(data: GameData, result: dict) -> dict:
         alternatives=[_weapon_card(data, a, weapon_power(a, result.get("target"))[2]) for a in result["alternatives"]],
         armor=pieces,
         charm=dict(id=charm["id"], name=charm["name"], name_es=charm["name_es"], rarity=charm["rarity"],
-                   skills=[dict(name=n, name_es=data.skill_es(n), level=l) for n, l in charm["skills"].items()])
+                   skills=[dict(name=n, name_es=data.skill_es(n), level=l) for n, l in charm["skills"].items()],
+                   slots=charm.get("slots") or [], synthetic=bool(charm.get("synthetic")), method=charm.get("method"))
         if charm else None,
         decorations=decos, skills=skills, set_bonuses=bonuses,
         explanation=_explain(data, result, skills),
-        signature=[w["id"]] + [p["id"] if p else 0 for p in result["pieces"]] + [charm["id"] if charm else 0],
+        signature=[w["id"]] + [p["id"] if p else 0 for p in result["pieces"]] + [(charm.get("key") or charm["id"]) if charm else 0],
     )
 
 
@@ -486,6 +548,11 @@ def _explain(data, result, skills):
     if len(sets) > 1:
         out.append(f"Set mixto de {len(sets)} armaduras distintas: cada pieza se elige por lo que aporta, "
                    "no por completar un set.")
+    ch = result.get("charm")
+    if ch and ch.get("synthetic"):
+        out.append(f"Talismán: en Rise son aleatorios (Crisol de fusión). Se propone uno realista para esta etapa "
+                   f"({', '.join(f'{data.skill_es(n)} {l}' for n, l in ch['skills'].items())}, huecos "
+                   f"{'-'.join(str(x) for x in ch['slots']) or 'ninguno'}); si consigues uno mejor, úsalo.")
     granted, _ = Scorer(data, result["weights"]).bonus_effects(result["bonus_counts"])
     if granted:
         out.append("Bonificaciones de set activas: " + ", ".join(dict.fromkeys(data.skill_es(g) for g in granted)) + ".")

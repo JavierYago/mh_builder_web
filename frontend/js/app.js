@@ -1,4 +1,4 @@
-import { classIcon, MONSTERS, ARMOR_ICONS, CHARM_ICON, JEWEL_ICON, UNKNOWN_MONSTER, LOCK } from "./icons.js";
+import { classIcon, MONSTERS, ARMOR_ICONS, CHARM_ICON, JEWEL_ICON, UNKNOWN_MONSTER, LOCK } from "./icons.js?v=5";
 
 // ------------------------------------------------------------------ utilidades
 const $app = document.getElementById("app");
@@ -97,6 +97,7 @@ document.addEventListener("error", (e) => {
   }
 }, true);
 
+const unlockTag = (o) => (o?.unlock_note ? `<span class="unlock-tag" title="${esc(o.unlock_note)}">${esc((o.unlock_note.match(/MR \d+/) || ["MR"])[0])}</span>` : "");
 const rarTag = (r) => `<span class="rar-tag ${rc(r)}">Rareza ${esc(r ?? "?")}</span>`;
 const loader = () => `<div class="loader"><i></i></div>`;
 const rule = () => `<div class="rule"><i></i></div>`;
@@ -294,7 +295,7 @@ function buildHtml(b) {
   const weapon = `<div class="equip weapon ${rc(w.rarity)}">
     ${iconFrame({ image: w.image, rarity: w.rarity, type: w.type, size: "lg" })}
     <div>
-      <div class="kind">Arma ${rarTag(w.rarity)}</div>
+      <div class="kind">Arma ${rarTag(w.rarity)} ${unlockTag(w)}</div>
       <div class="ename">${nm(w)} ${w.name_es && w.name_es !== w.name ? `<small>${esc(w.name)}</small>` : ""}</div>
       <div class="row"><span class="stat">Ataque <b>${esc(w.attack)}</b></span>${elem(w.element, w.element_value, w.element_hidden)}${elem(w.element2, w.element2_value)}${aff}
         ${w.defense_bonus ? `<span class="stat">Defensa <b>+${w.defense_bonus}</b></span>` : ""}${slots(w.slots, wDecos)}</div>
@@ -308,15 +309,21 @@ function buildHtml(b) {
     return `<div class="equip ${rc(p.rarity)}">
       ${iconFrame({ image: p.image, rarity: p.rarity, kind: p.kind })}
       <div>
-        <div class="kind">${KIND_ES[p.kind]} ${rarTag(p.rarity)} <span>DEF ${esc(p.defense)}</span> ${slots(p.slots, decos)}</div>
+        <div class="kind">${KIND_ES[p.kind]} ${rarTag(p.rarity)} ${unlockTag(p)} <span>DEF ${esc(p.defense)}</span> ${slots(p.slots, decos)}</div>
         <div class="ename">${nm(p)} ${p.set_name ? `<small>· ${esc(p.set_name_es || p.set_name)}</small>` : ""}</div>
         <div class="row">${skillChips(p.skills)}</div>
         ${jewelsLine(decos)}
       </div></div>`;
   }).join("");
+  const charmDecos = (b.decorations || []).filter((d) => d.owner === "charm");
   const charm = b.charm ? `<div class="equip ${rc(b.charm.rarity)}">${iconFrame({ rarity: b.charm.rarity, kind: "charm" })}<div>
-      <div class="kind">Amuleto ${rarTag(b.charm.rarity)}</div><div class="ename">${nm(b.charm)}</div>
-      <div class="row">${skillChips(b.charm.skills, () => true)}</div></div></div>` : "";
+      <div class="kind">${b.charm.synthetic ? "Talismán" : "Amuleto"} ${rarTag(b.charm.rarity)} ${slots(b.charm.slots, charmDecos)}
+        ${b.charm.synthetic ? '<span class="random-tag" title="En Rise los talismanes son aleatorios">ALEATORIO</span>' : ""}</div>
+      <div class="ename">${nm(b.charm)}</div>
+      <div class="row">${skillChips(b.charm.skills, () => true)}</div>
+      ${jewelsLine(charmDecos)}
+      ${b.charm.synthetic ? `<div class="row talisman-note">Objetivo realista para esta etapa · ${esc(b.charm.method || "Crisol de fusión")}. Busca uno igual o mejor.</div>` : ""}
+    </div></div>` : "";
 
   const skills = b.skills.filter((s) => s.level > 0).map((s) => `<div class="skill-line" title="${esc(s.description || "")}">
       <span class="n ${s.category}">${esc(s.name_es || s.name)}</span><span class="lv">${s.level}/${s.max}</span>
@@ -405,7 +412,7 @@ async function viewArsenal(typeId, expId) {
           ${iconFrame({ image: w.image, rarity: w.rarity, type: w.weapon_type_id })}
           <div>
             <div class="fname">${nm(w)}</div>
-            <div class="fsub">${w.name_es && w.name_es !== w.name ? esc(w.name) : ""}${w.extra?.category ? ` · ${esc(w.extra.category)}` : ""}</div>
+            <div class="fsub">${w.name_es && w.name_es !== w.name ? esc(w.name) : ""}${w.extra?.category ? ` · ${esc(w.extra.category)}` : ""} ${unlockTag(w)}</div>
             <div class="row"><span class="stat">ATQ <b>${esc(w.attack_display)}</b></span>${elem(w.element, w.element_value, w.element_hidden)}${elem(w.element2, w.element2_value)}
               ${w.affinity ? `<span class="stat ${w.affinity > 0 ? "pos" : "neg"}">AFI <b>${w.affinity > 0 ? "+" : ""}${w.affinity}%</b></span>` : ""}${slots(w.slots)}</div>
             ${w.sharpness ? `<div class="row">${sharpness(w.sharpness)}</div>` : ""}
@@ -435,7 +442,7 @@ async function viewArmeria(expId) {
         ${s.bonus_name ? `<div class="bonus">◆ ${esc(s.bonus_name_es || s.bonus_name)}: ${s.bonus_ranks.map((r) => `${r.pieces} pzs → ${esc(r.skill)}`).join(" · ")}</div>` : ""}
         ${s.group_name ? `<div class="bonus">◇ ${esc(s.group_name_es || s.group_name)}: ${s.group_ranks.map((r) => `${r.pieces} pzs → ${esc(r.skill)}`).join(" · ")}</div>` : ""}
         ${s.pieces.map((p) => `<div class="piece">${iconFrame({ image: p.image, rarity: p.rarity, kind: p.kind, size: "sm" })}
-          <div><div class="pn">${nm(p)}</div><div class="ps">${KIND_ES[p.kind]} · DEF ${esc(p.defense_base)}${p.defense_max && p.defense_max !== p.defense_base ? `–${esc(p.defense_max)}` : ""} · ${p.skills.map((k) => `${esc(k.name_es || k.name)} ${k.level}`).join(", ") || "sin habilidades"}</div></div>
+          <div><div class="pn">${nm(p)} ${unlockTag(p)}</div><div class="ps">${KIND_ES[p.kind]} · DEF ${esc(p.defense_base)}${p.defense_max && p.defense_max !== p.defense_base ? `–${esc(p.defense_max)}` : ""} · ${p.skills.map((k) => `${esc(k.name_es || k.name)} ${k.level}`).join(", ") || "sin habilidades"}</div></div>
           ${slots(p.slots)}</div>`).join("")}
       </article>`).join("")}</div>` : `<div class="empty-state tex-parchment"><h3>Sin resultados</h3></div>`;
   });

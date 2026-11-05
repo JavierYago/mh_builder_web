@@ -287,3 +287,50 @@ def _series_name(names: list[str]) -> str:
         else:
             break
     return " ".join(common) or names[0]
+
+
+# --------------------------------------------------------------------------- desbloqueos por MR
+# Equipo de Sunbreak que se desbloquea a un MR muy superior al de su rareza (Dragones Ancianos
+# Elevados, Magnamalo Escarnecido, Valstrax de Rango Maestro). Se detecta por sus materiales de
+# forja en la ficha de Kiranico. MR verificados con la guía de desbloqueo de sets de Game8.
+UNLOCK_RULES = [
+    ("Chameleos Risegem", 110, "Chameleos Elevado"),
+    ("Daora Risegem", 120, "Kushala Daora Elevado"),
+    ("Teostra Risegem", 140, "Teostra Elevado"),
+    ("Valstrax Risegem", 160, "Valstrax Resplandor Carmesí Elevado"),
+    ("Shagaru Risegem", 180, "Shagaru Magala Elevado"),
+    ("Rancorscale", 100, "Magnamalo Escarnecido"),
+    ("Resentment Scrap", 100, "Magnamalo Escarnecido"),
+    ("Heavy Valstrax Scrap", 70, "Valstrax Resplandor Carmesí (Rango Maestro)"),
+    ("Valstrax Spineshell+", 70, "Valstrax Resplandor Carmesí (Rango Maestro)"),
+    ("Rouge Lancewing+", 70, "Valstrax Resplandor Carmesí (Rango Maestro)"),
+    ("Shimmering Shard", 70, "Valstrax Resplandor Carmesí (Rango Maestro)"),
+]
+
+
+def _materials(kind: str, source_id: str) -> list[str]:
+    soup = BeautifulSoup(fetch_text(f"{config.RISE_SITE_URL}/data/{kind}/{source_id}"), "html.parser")
+    return [a.get_text(strip=True) for a in soup.find_all("a", href=re.compile(r"/data/items/"))]
+
+
+def load_unlocks(conn, min_rarity: int = 10) -> dict:
+    """Marca unlock_rank/unlock_note del equipo de Sunbreak según sus materiales de forja."""
+    stats = {}
+    for table, kind in (("weapons", "weapons"), ("armor_pieces", "armors")):
+        rows = conn.execute(f"SELECT id, source_id FROM {table} WHERE game_id='rise' AND rarity>=? "
+                            "AND source_id IS NOT NULL", (min_rarity,)).fetchall()
+        n = 0
+        for r in rows:
+            try:
+                mats = " | ".join(_materials(kind, r["source_id"]))
+            except Exception:  # noqa: BLE001 - ficha no disponible: se deja sin marcar
+                continue
+            hits = [(mr, note) for key, mr, note in UNLOCK_RULES if key in mats]
+            if hits:
+                mr, note = max(hits)
+                conn.execute(f"UPDATE {table} SET unlock_rank=?, unlock_note=? WHERE id=?",
+                             (mr, f"Se desbloquea en MR {mr} ({note})", r["id"]))
+                n += 1
+        stats[table] = n
+    conn.commit()
+    return stats

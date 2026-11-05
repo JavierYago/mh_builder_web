@@ -79,8 +79,21 @@ without downloading), `--images` (cache every remote image locally in `data/imag
 * Gaps are filled from the Fextralife wikis: weapon/piece pages, and for Iceborne armor each piece is cropped from the full-set render.
 * The ~1.5% with no public image anywhere (mostly Rise collab/event gear) show the weapon class icon or the piece silhouette tinted by rarity; failed loads fall back the same way in the browser.
 
+### Sunbreak late unlocks (Risen Elder Dragons)
+
+Some rarity-10 Sunbreak gear unlocks far above MR 10. `rise.load_unlocks` reads each piece's crafting
+materials on Kiranico and sets `unlock_rank` (e.g. "Chameleos Risegem" -> MR 110). Values match Game8's
+MR armor unlock table: Crimson Valstrax Eclipse MR 70, Sinister Grudge MR 100, Risen Mizuha MR 110,
+Risen Kushala MR 120, Risen Kaiser MR 140, Valstrax Epoch MR 160, Virtue/Prudence MR 180. Weapons needing
+Master Rank Valstrax materials are gated at MR 70 and Scorned Magnamalo weapons at MR 100 (Risen Elders have
+no weapons of their own). Sunbreak progression has matching tiers, and the optimizer never uses gear above
+the tier's MR.
+
 ### Known limitations
 
 * Progression tiers are mapped by rarity per rank milestone (see `backend/catalog.py`), not per individual item unlock.
-* Random-roll gear is excluded from recommendations (Kulve Taroth weapons, Rise talismans, Wilds random charms).
+* Random-roll gear is excluded from recommendations (Kulve Taroth weapons, Wilds random charms).
+* Rise/Sunbreak talismans are random (Melding Pot), so each build proposes a realistic *target* talisman for its
+  stage (`rise_talismans` in `optimizer.py`): 1-2 useful skills capped by stage and by the skill's decoration size,
+  plus typical slots (filled with decorations). It is flagged as "ALEATORIO" in the UI; none in Low Rank.
 * Rise rampage slots/decorations are not used by the optimizer.

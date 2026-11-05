@@ -570,6 +570,11 @@ button { font: inherit; color: inherit; }
 .rank-field.inline { margin: 0; min-width: 200px; }
 .rank-field.inline small { display: block; margin-top: 4px; color: var(--dim); font-size: 12px; }
 .variant-note { margin-top: 14px; }
+.random-tag { display: inline-block; padding: 0 6px; font: 800 10px var(--font-data); letter-spacing: .12em;
+  color: var(--ink); background: var(--sharpness-yellow); vertical-align: middle; }
+.talisman-note { font: italic 600 12px var(--font-data); color: var(--muted); }
+.unlock-tag { display: inline-block; padding: 0 6px; font: 800 10px var(--font-data); letter-spacing: .08em;
+  color: var(--sharpness-white); background: var(--sharpness-red); box-shadow: 0 0 6px #e6394666; vertical-align: middle; }
 .gauge.defensa i.on { background: var(--sharpness-purple); }
 .skill-line .n.defensa { color: #4b2a7a; }
 

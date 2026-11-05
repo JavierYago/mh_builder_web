@@ -100,6 +100,8 @@ CREATE TABLE IF NOT EXISTS weapons (
     sharpness_max   TEXT,                          -- JSON con Artesanía al máximo
     extra           TEXT,                          -- JSON (fial, munición, notas...)
     previous_name   TEXT,
+    unlock_rank     INTEGER,               -- rango (MR) mínimo para forjarla si va por encima del de su rareza
+    unlock_note     TEXT,
     image_url       TEXT,
     image_local     TEXT
 );
@@ -143,6 +145,8 @@ CREATE TABLE IF NOT EXISTS armor_pieces (
     res_ice         INTEGER DEFAULT 0,
     res_dragon      INTEGER DEFAULT 0,
     slots           TEXT NOT NULL DEFAULT '[]',
+    unlock_rank     INTEGER,
+    unlock_note     TEXT,
     image_url       TEXT,
     image_url_f     TEXT,
     image_local     TEXT

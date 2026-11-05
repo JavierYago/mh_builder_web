@@ -108,8 +108,20 @@ PROGRESSION = {
            ["Garangolm", "Lunagaron", "Blood Orange Bishaten", "Daimyo Hermitaur"], deco_slot=4),
         _t(3, 9, "Rango Maestro · 3★-6★", "La historia de Sunbreak avanza: equipo de rareza 9.",
            ["Malzeno", "Seregios", "Astalos", "Gore Magala", "Shagaru Magala", "Espinas"], deco_slot=4),
-        _t(10, 10, "Endgame · Rango Maestro", "Tras Gaismagorm: equipo de rareza 10 y mejoras finales.",
-           ["Gaismagorm", "Risen Elders", "Primordial Malzeno", "Afflicted"], deco_slot=4),
+        _t(10, 10, "Endgame · Rango Maestro", "Tras Gaismagorm: equipo de rareza 10, Amatsu y Malzeno Primigenio.",
+           ["Gaismagorm", "Amatsu", "Primordial Malzeno", "Lucent Nargacuga", "Furious Rajang"], deco_slot=4),
+        _t(70, 10, "Valstrax de Rango Maestro (MR 70)", "Valstrax Resplandor Carmesí en Rango Maestro: su set «Eclipse» "
+           "y sus materiales, necesarios para las últimas mejoras de muchas armas.",
+           ["Crimson Glow Valstrax"], deco_slot=4),
+        _t(100, 10, "Magnamalo Escarnecido (MR 100)", "Set Rencor Siniestro y armas del Magnamalo Escarnecido; "
+           "se abren las investigaciones de anomalías.", ["Scorned Magnamalo", "Afflicted"], deco_slot=4),
+        _t(110, 10, "Chameleos Elevado (MR 110)", "Primer Dragón Anciano Elevado: set Mizuha Elevado.",
+           ["Risen Chameleos"], deco_slot=4),
+        _t(120, 10, "Kushala Daora Elevado (MR 120)", "Set Kushala Elevado.", ["Risen Kushala Daora"], deco_slot=4),
+        _t(140, 10, "Teostra Elevado (MR 140)", "Set Káiser Elevado.", ["Risen Teostra"], deco_slot=4),
+        _t(160, 10, "Valstrax Elevado (MR 160)", "Set Valstrax «Época».", ["Risen Crimson Glow Valstrax"], deco_slot=4),
+        _t(180, 10, "Shagaru Magala Elevado (MR 180)", "Sets Virtud y Prudencia: el último equipo de Sunbreak.",
+           ["Risen Shagaru Magala"], deco_slot=4),
     ],
     "wilds-base": [
         _t(1, 2, "Rango Bajo · inicio", "Llanuras Azotavientos y primeros monstruos.",
