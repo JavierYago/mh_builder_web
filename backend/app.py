@@ -29,7 +29,7 @@ async def security_headers(request: Request, call_next):
     resp.headers["X-Content-Type-Options"] = "nosniff"
     resp.headers["X-Frame-Options"] = "DENY"
     resp.headers["Referrer-Policy"] = "no-referrer"
-    if request.url.path.startswith("/api/"):
+    if request.url.path.startswith(("/api/", "/static/")) or request.url.path == "/":
         resp.headers["Cache-Control"] = "no-cache"
     return resp
 

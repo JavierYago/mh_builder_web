@@ -19,8 +19,19 @@ def connect(readonly: bool = False) -> sqlite3.Connection:
     return conn
 
 
+# Columnas añadidas después de la primera versión: se crean si faltan (migración simple).
+MIGRATIONS = [
+    ("weapons", "unlock_rank", "INTEGER"), ("weapons", "unlock_note", "TEXT"),
+    ("armor_pieces", "unlock_rank", "INTEGER"), ("armor_pieces", "unlock_note", "TEXT"),
+]
+
+
 def init_schema(conn: sqlite3.Connection) -> None:
     conn.executescript(SCHEMA.read_text(encoding="utf8"))
+    for table, col, kind in MIGRATIONS:
+        cols = {r[1] for r in conn.execute(f"PRAGMA table_info({table})")}
+        if col not in cols:
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN {col} {kind}")
 
 
 def dumps(value) -> str:

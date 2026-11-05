@@ -134,6 +134,8 @@ def main():
             counts = LOADERS[game](conn)
             conn.commit()
             print(f"  [{game}] {counts} en {time.time() - t0:.0f}s")
+        if "rise" in args.games:
+            print(f"  [rise] desbloqueos por MR (Elevados...): {rise.load_unlocks(conn)}")
         print("Cargando monstruos...")
         print(f"  {monsters.load(conn, tuple(args.games))}")
         images.enrich(conn, args.games)
