@@ -151,6 +151,12 @@ async function viewHome() {
     </section>
     <h2 class="section-title">Archivos del Gremio</h2>
     <p class="section-sub">Todo el equipo registrado, aunque no forme parte de ninguna build recomendada.</p>
+    <a class="hunt-banner tex-leather frame-bronze" href="#/caceria">
+      <div class="hb-icons">${["world", "rise", "wilds"].map((k) => img(MONSTERS[k].img, "", MONSTERS[k].name)).join("")}</div>
+      <div><div class="eyebrow">Nuevo</div><h3>Cacería: build contra un monstruo</h3>
+        <p>Elige el monstruo y el rango de la misión: la build se adapta a sus debilidades, sus zonas débiles y sus ataques.</p></div>
+      <span class="go">ELEGIR PRESA ›</span>
+    </a>
     <div class="notes">
       <a class="note tex-leather frame-bronze" href="#/arsenal"><div class="icon-frame lg r5">${img(classIcon("long-sword"), "class-icon")}</div>
         <div><h3>Arsenal</h3><p>Árbol de forja de las 14 clases, juego a juego y expansión a expansión.</p><span class="go">ABRIR ›</span></div></a>
@@ -459,6 +465,130 @@ async function viewAdornos(expId) {
   });
 }
 
+// ------------------------------------------------------------------ cacería: build contra un monstruo
+const RANK_LABEL = { low: "Rango Bajo", high: "Rango Alto", master: "Rango Maestro" };
+const RANK_SHORT = { low: "RB", high: "RA", master: "RM" };
+const EL_KEYS = ["fire", "water", "thunder", "ice", "dragon"];
+const ST_ES = { poison: "Veneno", sleep: "Sueño", paralysis: "Parálisis", blast: "Nitro", stun: "Aturdir" };
+const QUEST_EXP = {
+  world: { low: "world-base", high: "world-base", master: "world-iceborne" },
+  rise: { low: "rise-base", high: "rise-base", master: "rise-sunbreak" },
+  wilds: { low: "wilds-base", high: "wilds-base" },
+};
+
+function weakChips(weak, min = 2) {
+  return EL_KEYS.filter((e) => (weak[`element:${e}`] || 0) >= min)
+    .sort((a, b) => weak[`element:${b}`] - weak[`element:${a}`])
+    .map((e) => `<span class="weak-chip" style="--el:${ELEMENTS[e][1]}">${ELEMENTS[e][0]} ${"★".repeat(weak[`element:${e}`])}</span>`).join("");
+}
+
+const monsterIcon = (m, cls = "") => (m.icon ? img(m.icon, cls, m.name) : `<span class="${cls}">${UNKNOWN_MONSTER}</span>`);
+
+async function viewHunt(gameId) {
+  setNav("caceria");
+  const gs = (await games()).filter((g) => g.has_data);
+  gameId = gs.some((g) => g.id === gameId) ? gameId : gs[0].id;
+  setGameTheme(gameId);
+  $app.innerHTML = `<div class="page fade-in">${crumbs([["Misiones", "#/"], ["Cacería"]])}
+    <section class="guild-hero"><div class="eyebrow">Cacería</div><h1>Elige tu presa</h1>
+      <p>Selecciona el monstruo y el rango de la misión: la build se calcula contra sus zonas débiles, su debilidad elemental y los ataques que usa.</p></section>
+    <div class="toolbar"><div class="tabs">${gs.map((g) => `<a class="tab ${g.id === gameId ? "active" : ""}" href="#/caceria/${g.id}">${esc(g.name.replace("Monster Hunter", "MH").replace(":", ""))}</a>`).join("")}</div>
+      <input class="search" id="q" placeholder="Buscar monstruo…" aria-label="Buscar monstruo"></div>
+    <div id="list">${loader()}</div></div>`;
+  const ms = await api(`/api/monsters?game=${encodeURIComponent(gameId)}`);
+  searchable("list", "q", (q) => {
+    const ql = q.toLowerCase();
+    const items = ms.filter((m) => !ql || `${m.name} ${m.name_es || ""}`.toLowerCase().includes(ql));
+    document.getElementById("list").innerHTML = items.length ? `<div class="monster-grid">${items.map((m) => `
+      <a class="monster-card tex-leather frame-bronze" href="#/caceria/${esc(gameId)}/${m.id}">
+        <div class="medallion">${monsterIcon(m)}</div>
+        <div class="mname">${nm(m)}</div>
+        <div class="ranks">${["low", "high", "master"].map((r) => (m.ranks.includes(r) ? `<span class="rank-pill ${r}">${RANK_SHORT[r]}</span>` : "")).join("")}</div>
+        <div class="weaks">${weakChips(m.weaknesses) || '<span class="weak-chip none">Sin debilidad clara</span>'}</div>
+      </a>`).join("")}</div>` : `<div class="empty-state tex-parchment"><h3>Sin resultados</h3></div>`;
+  });
+}
+
+function hitzoneTable(m) {
+  const cols = [["cut", "Corte"], ["impact", "Impacto"], ["shot", "Disparo"], ...EL_KEYS.map((e) => [e, ELEMENTS[e][0]])];
+  const heat = (k, v) => {
+    if (v == null) return "";
+    const phys = ["cut", "impact", "shot"].includes(k);
+    const lv = phys ? (v >= 45 ? 3 : v >= 30 ? 2 : 1) : (v >= 20 ? 3 : v >= 10 ? 2 : v > 0 ? 1 : 0);
+    return `hz${lv}`;
+  };
+  return `<div class="hz-wrap"><table class="hz"><thead><tr><th>Parte</th>${cols.map(([, l]) => `<th>${esc(l)}</th>`).join("")}</tr></thead>
+    <tbody>${m.hitzones.map((h) => `<tr><td>${esc(h.part)}</td>${cols.map(([k]) => `<td class="${heat(k, h[k])}">${h[k] == null ? "–" : Math.round(h[k])}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`;
+}
+
+async function viewMonster(gameId, monsterId, rank, weapon) {
+  setNav("caceria"); setGameTheme(gameId);
+  const [m, gs] = await Promise.all([api(`/api/monsters/${monsterId}`), games()]);
+  const g = gs.find((x) => x.id === m.game_id);
+  rank = m.ranks.includes(rank) ? rank : m.ranks.includes("high") ? "high" : m.ranks[0];
+  const base = `#/caceria/${m.game_id}/${m.id}`;
+  const stars = (n) => `<span class="stars">${"★".repeat(n)}<i>${"★".repeat(Math.max(0, 3 - n))}</i></span>`;
+  const rankKey = `rank:${QUEST_EXP[m.game_id]?.[rank] || m.game_id}`;
+  const rankLbl = rank === "master" ? "MR" : "HR";
+  const rankName = rank === "master" ? "Rango Maestro" : "Rango de Cazador";
+  const myRank = store.get(rankKey, null);
+  $app.innerHTML = `<div class="page fade-in">
+    ${crumbs([["Cacería", "#/caceria"], [g.name, `#/caceria/${m.game_id}`], [m.name_es || m.name]])}
+    <header class="plaque tex-leather frame-bronze">
+      <div class="medallion lg">${monsterIcon(m)}</div>
+      <div><div class="eyebrow">Presa · ${esc(g.name)}</div><h1>${nm(m)}</h1>
+        <p>${m.threats_es.length ? `Ataques: ${m.threats_es.map(esc).join(" · ")}` : ""}${m.threats_source === "estimado" ? " (estimado)" : ""}</p></div>
+      <div class="rank-tabs">${["low", "high", "master"].filter((r) => m.ranks.includes(r)).map((r) =>
+        `<a class="rank-tab ${r === rank ? "active" : ""}" href="${base}/${r}${weapon ? `/${weapon}` : ""}">${RANK_LABEL[r]}<small>MISIÓN</small></a>`).join("")}</div>
+    </header>
+    <div class="hunt-controls">
+      ${m.forms.length ? `<div class="forms"><span class="ctl-label">Forma</span><div class="tabs">${m.forms.map((f) =>
+        `<a class="tab ${f.id === m.id ? "active" : ""}" href="#/caceria/${m.game_id}/${f.id}/${rank}${weapon ? `/${weapon}` : ""}">${esc(f.label)}</a>`).join("")}</div></div>` : ""}
+      <div class="rank-field inline"><label for="myrank">Tu ${rankName}</label>
+        <div class="box"><span>${esc(rankLbl)}</span><input id="myrank" type="number" min="1" max="999" inputmode="numeric" placeholder="—" value="${myRank ?? ""}"></div>
+        <small>Vacío = mejor equipo del rango</small></div>
+    </div>
+    ${m.notes?.length ? `<div class="notice mine variant-note">★ ${m.notes.map(esc).join(" ")}</div>` : ""}
+    <div class="dossier">
+      <div class="hn tex-parchment"><h4>Debilidades</h4>
+        ${EL_KEYS.map((e) => `<div class="weak-line"><span class="ink-${e}">${ELEMENTS[e][0]}</span>${stars(m.weaknesses[`element:${e}`] || 0)}</div>`).join("")}
+        <div class="weak-sep"></div>
+        ${Object.entries(ST_ES).map(([k, l]) => `<div class="weak-line"><span>${l}</span>${stars(m.weaknesses[`status:${k}`] || 0)}</div>`).join("")}
+      </div>
+      <div class="hn tex-parchment"><h4>Zonas de golpe <span>% de daño recibido</span></h4>${hitzoneTable(m)}</div>
+    </div>
+    <h2 class="section-title">Elige tu arma</h2>
+    <p class="section-sub">Build para cazar a ${nm(m)} en ${RANK_LABEL[rank]}, con el mejor equipo disponible en ese rango.</p>
+    <div class="class-grid">${g.weapon_types.map((t) => `<a class="class-card tex-leather frame-bronze ${t.id === weapon ? "selected" : ""}" href="${base}/${rank}/${t.id}">
+      <div class="icon-frame">${img(classIcon(t.id), "class-icon")}</div><div class="name">${esc(t.name)}</div></a>`).join("")}</div>
+    <div id="hunt-build">${weapon ? loader() : ""}</div>
+  </div>`;
+  document.getElementById("myrank").addEventListener("change", (e) => {
+    const v = parseInt(e.target.value, 10);
+    store.set(rankKey, Number.isFinite(v) && v > 0 ? v : null);
+    viewMonster(gameId, monsterId, rank, weapon);
+  });
+  document.getElementById("myrank").addEventListener("keydown", (e) => { if (e.key === "Enter") e.target.dispatchEvent(new Event("change")); });
+  if (!weapon) return;
+  try {
+    const b = await api(`/api/hunt/${m.id}?rank=${encodeURIComponent(rank)}&weapon=${encodeURIComponent(weapon)}${myRank ? `&hr=${myRank}` : ""}`);
+    const t = b.tier || {};
+    const tierTxt = myRank
+      ? (t.too_low ? `Tu ${rankLbl} ${myRank} no llega a ${RANK_LABEL[rank]} (mínimo ${rankLbl} ${t.min_rank_for_quest}): se muestra el equipo de esa etapa.`
+        : `Con ${rankLbl} ${myRank}: equipo hasta rareza ${t.max_rarity} · ${t.tier_title}.`)
+      : `Mejor equipo disponible en ${RANK_LABEL[rank]} (rareza ${t.max_rarity ?? "máx."}). Indica tu ${rankLbl} para ajustarla.`;
+    const wt = g.weapon_types.find((t) => t.id === weapon);
+    document.getElementById("hunt-build").innerHTML = `<section class="tier" id="hunt-result">
+      <div class="tier-head tex-leather frame-bronze">
+        <div class="tier-rank"><small>${esc(RANK_LABEL[rank].toUpperCase())}</small><b>${esc(RANK_SHORT[rank])}</b></div>
+        <div><h2>${esc(wt?.name || weapon)} contra ${nm(m)}</h2><p>${esc(tierTxt)}</p></div>
+      </div>${buildHtml(b)}</section>`;
+    document.getElementById("hunt-result").scrollIntoView({ behavior: "smooth" });
+  } catch (err) {
+    document.getElementById("hunt-build").innerHTML = `<div class="empty-state tex-parchment"><h3>Sin build</h3><p>${esc(err.message)}</p></div>`;
+  }
+}
+
 function notFound() {
   $app.innerHTML = `<div class="page"><div class="empty-state tex-parchment"><h3>Rastro perdido</h3><p>Esta página no existe.</p><p><a class="chip key" href="#/">Volver al tablón</a></p></div></div>`;
 }
@@ -475,6 +605,7 @@ async function route() {
       case "arsenal": return await viewArsenal(parts[1], parts[2]);
       case "armeria": return await viewArmeria(parts[1]);
       case "adornos": return await viewAdornos(parts[1]);
+      case "caceria": return parts[2] ? await viewMonster(parts[1], +parts[2], parts[3], parts[4]) : await viewHunt(parts[1]);
       default: return notFound();
     }
   } catch (err) {

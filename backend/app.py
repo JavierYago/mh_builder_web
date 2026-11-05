@@ -10,7 +10,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 
-from . import config, db, thumbs
+from . import config, db, hunt, thumbs
+from .monster_threats import THREAT_ES
 
 app = FastAPI(title="MH Builder", docs_url=None, redoc_url=None, openapi_url=None)
 if config.CORS_ORIGINS:
@@ -211,6 +212,59 @@ def skills(game_id: str):
     for s in out:
         s["levels"] = by.get(s["id"], [])
     return out
+
+
+_hunt = hunt.HuntService(lambda: db.connect(readonly=True))
+RANKS = ("low", "high", "master")
+
+
+def _monster_row(m: dict, weak: dict) -> dict:
+    return dict(id=m["id"], game_id=m["game_id"], name=m["name"], name_es=m["name_es"], species=m["species"],
+                ranks=json.loads(m["ranks"]), threats=json.loads(m["threats"]), threats_source=m["threats_source"],
+                icon=f"/images/{m['icon_local']}" if m.get("icon_local") else m.get("icon_url"),
+                weaknesses=weak.get(m["id"], {}), variant_of=m.get("variant_of"), variant_label=m.get("variant_label"),
+                notes=json.loads(m.get("notes") or "[]"))
+
+
+@app.get("/api/monsters")
+def monsters(game: str = Query(..., max_length=20)):
+    ms = rows("SELECT * FROM monsters WHERE game_id=? AND variant_of IS NULL ORDER BY COALESCE(name_es, name)", game)
+    has_variants = {r["variant_of"] for r in rows("SELECT variant_of FROM monsters WHERE game_id=? AND variant_of IS NOT NULL", game)}
+    weak = {}
+    for r in rows("SELECT w.* FROM monster_weaknesses w JOIN monsters m ON m.id=w.monster_id WHERE m.game_id=?", game):
+        weak.setdefault(r["monster_id"], {})[f"{r['kind']}:{r['name']}"] = r["stars"]
+    return [dict(_monster_row(m, weak), has_variants=m["id"] in has_variants) for m in ms]
+
+
+@app.get("/api/monsters/{monster_id}")
+def monster(monster_id: int):
+    found = rows("SELECT * FROM monsters WHERE id=?", monster_id)
+    if not found:
+        raise HTTPException(404, "Monstruo desconocido")
+    weak = {monster_id: {f"{r['kind']}:{r['name']}": r["stars"]
+                         for r in rows("SELECT * FROM monster_weaknesses WHERE monster_id=?", monster_id)}}
+    out = _monster_row(found[0], weak)
+    out["hitzones"] = rows("SELECT part, cut, impact, shot, fire, water, thunder, ice, dragon, stun "
+                           "FROM monster_hitzones WHERE monster_id=?", monster_id)
+    out["threats_es"] = [THREAT_ES.get(t, t) for t in out["threats"]]
+    base_id = out["variant_of"] or monster_id
+    forms = rows("SELECT id, name, name_es, variant_label FROM monsters WHERE id=? OR variant_of=? ORDER BY variant_of IS NOT NULL, id",
+                 base_id, base_id)
+    out["forms"] = [dict(id=f["id"], label=f["variant_label"] or "Normal", name=f["name_es"] or f["name"]) for f in forms]         if len(forms) > 1 else []
+    return out
+
+
+@app.get("/api/hunt/{monster_id}")
+def hunt_build(monster_id: int, rank: str = Query(..., max_length=10), weapon: str = Query(..., max_length=40),
+               hr: int | None = Query(None, ge=1, le=999)):
+    if rank not in RANKS:
+        raise HTTPException(400, "Rango no válido")
+    if not rows("SELECT 1 FROM weapon_types WHERE id=?", weapon):
+        raise HTTPException(404, "Tipo de arma desconocido")
+    build = _hunt.build(monster_id, rank, weapon, hr)
+    if not build:
+        raise HTTPException(404, "No hay build para ese monstruo, rango y arma")
+    return build
 
 
 @app.get("/thumb")

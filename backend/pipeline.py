@@ -12,7 +12,7 @@ import json
 import time
 
 from . import catalog, config, db, optimizer
-from .scrapers import fextralife, http, images, rise, validate_images, wilds, world
+from .scrapers import fextralife, http, images, monsters, rise, validate_images, wilds, world
 
 LOADERS = {"world": world.load, "rise": rise.load, "wilds": wilds.load}
 
@@ -115,6 +115,7 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--games", nargs="*", default=list(LOADERS), choices=list(LOADERS))
     ap.add_argument("--builds-only", action="store_true")
+    ap.add_argument("--monsters-only", action="store_true", help="solo recarga los monstruos")
     ap.add_argument("--images", action="store_true")
     args = ap.parse_args()
 
@@ -122,6 +123,10 @@ def main():
     db.init_schema(conn)
     seed_catalog(conn)
     conn.commit()
+    if args.monsters_only:
+        print(f"Monstruos: {monsters.load(conn, tuple(args.games))}")
+        conn.close()
+        return
     if not args.builds_only:
         for game in args.games:
             t0 = time.time()
@@ -129,6 +134,8 @@ def main():
             counts = LOADERS[game](conn)
             conn.commit()
             print(f"  [{game}] {counts} en {time.time() - t0:.0f}s")
+        print("Cargando monstruos...")
+        print(f"  {monsters.load(conn, tuple(args.games))}")
         images.enrich(conn, args.games)
         print("Validando y guardando imágenes en local...")
         print(f"  {validate_images.run(conn, tuple(args.games))}")
