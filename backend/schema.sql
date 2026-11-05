@@ -220,3 +220,38 @@ CREATE TABLE IF NOT EXISTS builds (
     data            TEXT NOT NULL,         -- JSON con la build completa
     UNIQUE (tier_id, weapon_type_id)
 );
+
+-- Monstruos: zonas de golpe, debilidades, amenazas y rangos en que aparecen.
+CREATE TABLE IF NOT EXISTS monsters (
+    id          INTEGER PRIMARY KEY,
+    game_id     TEXT NOT NULL REFERENCES games(id),
+    source_id   TEXT,
+    name        TEXT NOT NULL,
+    name_es     TEXT,
+    species     TEXT,
+    ranks       TEXT NOT NULL DEFAULT '[]',   -- JSON ["low","high","master"]
+    threats     TEXT NOT NULL DEFAULT '[]',   -- JSON códigos de monster_threats
+    threats_source TEXT,                      -- datos | estimado
+    icon_url    TEXT,
+    icon_local  TEXT,
+    variant_of  INTEGER REFERENCES monsters(id),  -- variante especial de otro monstruo (p. ej. Kirin sin cuerno)
+    variant_label TEXT,                           -- "Sin cuerno · Orgullo esterlino"
+    notes       TEXT NOT NULL DEFAULT '[]',       -- JSON: notas de la misión / estado especial
+    UNIQUE (game_id, name)
+);
+
+CREATE TABLE IF NOT EXISTS monster_hitzones (
+    monster_id  INTEGER NOT NULL REFERENCES monsters(id) ON DELETE CASCADE,
+    part        TEXT NOT NULL,
+    cut         REAL, impact REAL, shot REAL,
+    fire REAL, water REAL, thunder REAL, ice REAL, dragon REAL,
+    stun        REAL
+);
+
+CREATE TABLE IF NOT EXISTS monster_weaknesses (
+    monster_id  INTEGER NOT NULL REFERENCES monsters(id) ON DELETE CASCADE,
+    kind        TEXT NOT NULL,                 -- element | status
+    name        TEXT NOT NULL,                 -- fire... | poison, sleep, paralysis, blast, stun
+    stars       INTEGER NOT NULL,              -- 0..3
+    PRIMARY KEY (monster_id, kind, name)
+);

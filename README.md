@@ -51,6 +51,26 @@ without downloading), `--images` (cache every remote image locally in `data/imag
 * Wilds: [wilds.mhdb.io](https://wilds.mhdb.io) (English + Spanish).
 * Outlanders: no public database exists yet (game launched 29 Oct 2026); the game and its 8 weapon classes are registered and ready for a loader.
 
+### Hunt mode (build against a monster)
+
+`#/caceria` lets you pick a monster (183 across World/Iceborne, Rise/Sunbreak and Wilds), the quest rank
+(low / high / master) and a weapon class; `/api/hunt/{monster}?rank=&weapon=` computes the build on demand
+(cached in memory, < 1 s).
+
+* Monster data (`backend/scrapers/monsters.py`): hitzones per part, elemental/status weaknesses, ranks it
+  appears in (from reward tables), icon. World from MHWorldData, Rise from Kiranico, Wilds from mhdb.
+* The optimizer receives the monster's weak-point hitzones (average of its 3 best parts per damage type
+  and element) instead of generic values, so the weapon element and raw/element balance adapt to it.
+  Weakness Exploit loses value if the monster has no ≥45 hitzone (World/Rise).
+* Defensive skills (Earplugs, Windproof, resistances…) are valued according to what the monster does.
+  World has this data; for Rise/Wilds-exclusive monsters it comes from a hand-written table
+  (`backend/monster_threats.py`, flagged as "estimado" in the UI).
+* Quest rank sets the gear cap; the optional player HR/MR (`&hr=`) narrows it to the progression tier the
+  player has reached (same tiers as the rank builds). It warns if the HR/MR is below the quest's minimum.
+* Special encounters are stored as variants of a monster (`VARIANTS` in `monsters.py`), e.g. Iceborne's
+  "Sterling Pride" Kirin: horn already broken, permanently enraged (charged body hitzones), 13,400 HP vs 21,440
+  and x11.30 attack vs x10.50 (parsed from Kiranico's quest table).
+
 ### Images
 
 * World / Iceborne weapons: 4K renders from mhworld.kiranico.com, served through `/thumb` (downloaded once, cropped to the weapon and cached as 256 px WebP in `data/images/thumbs`; host whitelisted).

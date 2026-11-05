@@ -123,23 +123,40 @@ def _top_sharp(sharp: dict | None):
     return "red"
 
 
-def weapon_power(w: dict) -> tuple[float, float, str | None]:
-    """Devuelve (potencia, peso del elemento, color de afilado efectivo)."""
+IMPACT_CLASSES = {"hammer", "hunting-horn"}
+
+
+def damage_type(wtype: str) -> str:
+    if wtype in meta.RANGED:
+        return "shot"
+    return "impact" if wtype in IMPACT_CLASSES else "cut"
+
+
+def weapon_power(w: dict, target: dict | None = None) -> tuple[float, float, str | None]:
+    """Devuelve (potencia, peso del elemento, color de afilado efectivo).
+
+    target (opcional): monstruo objetivo con sus zonas de golpe medias en puntos débiles
+    {"phys": {"cut": .65, ...}, "elem": {"fire": .25, ...}, "status": {"poison": 1.3, ...}}.
+    Sin objetivo se usan valores medios genéricos (0.6 físico, 0.3 elemental)."""
     wtype = w["weapon_type_id"]
     ranged = wtype in meta.RANGED
     color = None if ranged else _top_sharp(w["sharpness"])
     s_raw = 1.0 if ranged else SHARP_RAW.get(color, 1.0)
     s_elem = 1.0 if ranged else SHARP_ELEM.get(color, 1.0)
-    raw = (w["attack_raw"] or 0) * s_raw * (1 + 0.25 * (w["affinity"] or 0) / 100) * meta.MOTION[wtype] * 0.6
+    hz_phys = target["phys"][damage_type(wtype)] if target else 0.6
+    raw = (w["attack_raw"] or 0) * s_raw * (1 + 0.25 * (w["affinity"] or 0) / 100) * meta.MOTION[wtype] * hz_phys
     elem = 0.0
     el = (w["element"] or "").lower()
     if w["element_value"] and not w["element_hidden"]:
         if el in ELEMENTAL:
-            elem = w["element_value"] * s_elem * 0.3  # hitzone elemental medio en puntos débiles
+            hz = target["elem"].get(el, 0) if target else 0.3  # hitzone elemental medio en puntos débiles
+            elem = w["element_value"] * s_elem * hz
         elif el in STATUS:
-            elem = w["element_value"] * 0.08
+            elem = w["element_value"] * 0.08 * (target["status"].get(el, 1.0) if target else 1.0)
         if w.get("element2_value"):
-            elem = elem * 0.75 + (w["element2_value"] or 0) * s_elem * 0.25 * 0.5
+            el2 = (w.get("element2") or "").lower()
+            hz2 = (target["elem"].get(el2, 0) if target else 0.25) if el2 in ELEMENTAL else 0.1
+            elem = elem * 0.75 + (w["element2_value"] or 0) * s_elem * hz2 * 0.5
     total = raw + elem
     return total, (elem / total if total else 0.0), color
 
@@ -202,14 +219,16 @@ class Scorer:
 
 
 # --------------------------------------------------------------------------- optimizador
-def optimize(data: GameData, tier: dict, expansions: set[str], weapon_type: str, excludes: list[str]):
+def optimize(data: GameData, tier: dict, expansions: set[str], weapon_type: str, excludes: list[str],
+             target: dict | None = None, adjust=None):
+    """target: monstruo objetivo (ver weapon_power). adjust(weights, weapon) -> weights: ajuste de pesos."""
     weapons = [w for w in data.weapons if w["weapon_type_id"] == weapon_type
                and _allowed(w, tier, expansions, excludes)
                and w["extra"].get("category") not in RANDOM_CATEGORIES
                and (w["attack_raw"] or 0) > 0]
     if not weapons:
         return None
-    ranked = sorted(((weapon_power(w), w) for w in weapons), key=lambda x: -x[0][0])
+    ranked = sorted(((weapon_power(w, target), w) for w in weapons), key=lambda x: -x[0][0])
     picks, seen_elem = [], set()
     for (power, share, color), w in ranked:
         key = (w["element"] or "raw").lower()
@@ -228,11 +247,14 @@ def optimize(data: GameData, tier: dict, expansions: set[str], weapon_type: str,
     best = None
     for power, share, color, w in picks:
         weights = meta.profile(weapon_type, w["element"], share)
+        if adjust:
+            weights = adjust(weights, w)
         result = _optimize_armor(data, w, weights, armor, decos, charms)
         score = power * (1 + result["value"] / 100)
         if best is None or score > best["score"]:
             best = dict(score=score, power=power, share=share, color=color, weapon=w, weights=weights, **result)
     best["alternatives"] = [w for _, w in ranked[:6] if w["id"] != best["weapon"]["id"]][:4]
+    best["target"] = target
     return best
 
 
@@ -425,7 +447,7 @@ def serialize(data: GameData, result: dict) -> dict:
     return dict(
         score=round(result["score"], 2), power=round(result["power"], 2), element_share=round(result["share"], 3),
         weapon=_weapon_card(data, w, result["color"]),
-        alternatives=[_weapon_card(data, a, weapon_power(a)[2]) for a in result["alternatives"]],
+        alternatives=[_weapon_card(data, a, weapon_power(a, result.get("target"))[2]) for a in result["alternatives"]],
         armor=pieces,
         charm=dict(id=charm["id"], name=charm["name"], name_es=charm["name_es"], rarity=charm["rarity"],
                    skills=[dict(name=n, name_es=data.skill_es(n), level=l) for n, l in charm["skills"].items()])
