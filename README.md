@@ -18,4 +18,49 @@ An interactive, full-stack web application designed to serve as a comprehensive 
 
 ## 🚀 Getting Started
 
-*(More instructions on how to set up the local environment, database schema, and Python scripts will be added as the project development advances through its sprints).*
+Requirements: Python 3.11+.
+
+```bash
+python -m venv .venv
+.venv\Scripts\activate            # Windows  (source .venv/bin/activate on Linux/macOS)
+pip install -r requirements.txt
+copy .env.example .env            # cp on Linux/macOS — edit values if needed
+python -m backend.pipeline        # downloads all data into SQLite and precomputes builds (~8 min)
+python -m backend.app             # http://127.0.0.1:8000
+```
+
+Useful pipeline flags: `--games world rise` (reload only some games), `--builds-only` (recompute builds
+without downloading), `--images` (cache every remote image locally in `data/images`).
+
+### Project layout
+
+| Path | Purpose |
+|------|---------|
+| `backend/scrapers/` | One loader per game: World + Iceborne (MHWorldData CSVs + mhw-db images), Rise + Sunbreak (Kiranico), Wilds (mhdb API) |
+| `backend/schema.sql` | Relational schema: game → expansion → weapons / armor / decorations / charms / skills / set bonuses |
+| `backend/catalog.py` | Games, DLCs, weapon classes and the **rank progression tiers** (which rarity unlocks at which HR/MR) |
+| `backend/meta.py` | Skill weights per weapon class (what each weapon wants: raw, element, sharpness, ammo…) |
+| `backend/optimizer.py` | Build generator: weapon damage model + beam search over armor pieces + greedy decoration fill |
+| `backend/app.py` | FastAPI JSON API + static frontend server (read-only DB, CSP and security headers) |
+| `frontend/` | Vanilla HTML/CSS/JS single-page app |
+
+### Data sources
+
+* World / Iceborne: [MHWorldData](https://github.com/gatheringhallstudios/MHWorldData) (incl. Spanish names) and [mhw-db.com](https://mhw-db.com) for images.
+* Rise / Sunbreak: [mhrise.kiranico.com](https://mhrise.kiranico.com) (English + Spanish pages).
+* Wilds: [wilds.mhdb.io](https://wilds.mhdb.io) (English + Spanish).
+* Outlanders: no public database exists yet (game launched 29 Oct 2026); the game and its 8 weapon classes are registered and ready for a loader.
+
+### Images
+
+* World / Iceborne weapons: 4K renders from mhworld.kiranico.com, served through `/thumb` (downloaded once, cropped to the weapon and cached as 256 px WebP in `data/images/thumbs`; host whitelisted).
+* Wilds weapons and armor: mhwilds.kiranico.com thumbnails. Rise: Kiranico. World base armor: mhw-db.
+* Every image is validated (exists, decodes, not blank) and stored locally in `data/images`, so the site never depends on hotlinks.
+* Gaps are filled from the Fextralife wikis: weapon/piece pages, and for Iceborne armor each piece is cropped from the full-set render.
+* The ~1.5% with no public image anywhere (mostly Rise collab/event gear) show the weapon class icon or the piece silhouette tinted by rarity; failed loads fall back the same way in the browser.
+
+### Known limitations
+
+* Progression tiers are mapped by rarity per rank milestone (see `backend/catalog.py`), not per individual item unlock.
+* Random-roll gear is excluded from recommendations (Kulve Taroth weapons, Rise talismans, Wilds random charms).
+* Rise rampage slots/decorations are not used by the optimizer.

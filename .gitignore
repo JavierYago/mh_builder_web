@@ -1,0 +1,8 @@
+# Entorno y secretos
+.env
+.venv/
+__pycache__/
+*.pyc
+
+# Datos generados (se regeneran con: python -m backend.pipeline)
+data/
