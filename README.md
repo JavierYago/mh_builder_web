@@ -49,7 +49,7 @@ without downloading), `--images` (cache every remote image locally in `data/imag
 * World / Iceborne: [MHWorldData](https://github.com/gatheringhallstudios/MHWorldData) (incl. Spanish names) and [mhw-db.com](https://mhw-db.com) for images.
 * Rise / Sunbreak: [mhrise.kiranico.com](https://mhrise.kiranico.com) (English + Spanish pages).
 * Wilds: [wilds.mhdb.io](https://wilds.mhdb.io) (English + Spanish).
-* Outlanders: no public database exists yet (game launched 29 Oct 2026); the game and its 8 weapon classes are registered and ready for a loader.
+* Outlanders: no public database exists yet (game launched 29 Oct 2026); the game and its 8 weapon classes are registered and ready for a loader. Community codes/tier-list hub: [MH Outlanders Hub](https://mhoutlandershub.com/).
 
 ### Hunt mode (build against a monster)
 
